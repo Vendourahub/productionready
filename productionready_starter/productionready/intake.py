@@ -79,13 +79,39 @@ def intake_repository(
                 else:
                     raise RuntimeError(f"Failed to fetch GitHub repository '{owner}/{repo}': HTTP {e.code} - {e.reason}") from e
 
-            # Extract tarball
+            # Extract tarball safely with path and symlink traversal defenses
             with tarfile.open(fileobj=io.BytesIO(tar_data), mode="r:*") as tar:
-                # Security check for path traversal during tar extraction
+                base_dir = temp_path.resolve()
+                safe_members = []
                 for member in tar.getmembers():
-                    if member.name.startswith("/") or ".." in member.name:
+                    # Reject absolute paths or relative traversal
+                    if member.name.startswith("/") or member.name.startswith("\\") or ".." in member.name:
                         raise ValueError(f"Malicious tar entry detected: {member.name}")
-                tar.extractall(path=temp_path)
+
+                    # Resolve anticipated target path
+                    member_path = (base_dir / member.name).resolve()
+                    try:
+                        member_path.relative_to(base_dir)
+                    except ValueError:
+                        raise ValueError(f"Path traversal detected in archive member: {member.name}")
+
+                    # Defend against symlink and hardlink directory escape
+                    if member.issym() or member.islnk():
+                        link_target = (member_path.parent / member.linkname).resolve()
+                        try:
+                            link_target.relative_to(base_dir)
+                        except ValueError:
+                            raise ValueError(
+                                f"Symlink traversal detected in archive member: {member.name} -> {member.linkname}"
+                            )
+
+                    safe_members.append(member)
+
+                # Use data filter on Python 3.12+ if available, otherwise safe members list
+                if hasattr(tarfile, "data_filter"):
+                    tar.extractall(path=temp_path, filter="data")
+                else:
+                    tar.extractall(path=temp_path, members=safe_members)
 
             # GitHub tarballs unpack into a single root folder named {owner}-{repo}-{sha}
             extracted_subdirs = [p for p in temp_path.iterdir() if p.is_dir()]
@@ -94,7 +120,10 @@ def intake_repository(
             yield target_dir, "github_repository", commit_sha
     else:
         # Local filesystem path
-        local_path = Path(target).expanduser().resolve(strict=True)
+        try:
+            local_path = Path(target).expanduser().resolve(strict=True)
+        except (FileNotFoundError, OSError):
+            raise ValueError(f"Target '{target}' does not exist.")
         if not local_path.is_dir():
             raise ValueError(f"Target '{target}' is not a directory.")
         yield local_path, "local_directory", None

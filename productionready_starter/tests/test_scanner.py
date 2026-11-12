@@ -1,6 +1,12 @@
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+# Ensure package root is in sys.path
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
 
 from productionready.scanner import scan, render_html
 from productionready.intake import parse_github_spec
