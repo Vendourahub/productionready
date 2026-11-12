@@ -3,12 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..auth import verify_api_key
 from ..models import Finding, Assessment
 from ..schemas.finding import FindingResponse, FindingStatusUpdate
 from ..schemas.assessment import AssessmentResponse
 from ..services.remediation import update_finding_status, request_reassessment
 
-router = APIRouter(tags=["Remediation"])
+router = APIRouter(tags=["Remediation"], dependencies=[Depends(verify_api_key)])
 
 
 @router.patch("/api/findings/{finding_id}/status", response_model=FindingResponse)

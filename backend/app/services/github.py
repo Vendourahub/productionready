@@ -7,10 +7,14 @@ from ..config import settings
 
 
 def verify_github_signature(payload_bytes: bytes, signature_header: Optional[str]) -> bool:
-    """Verifies HMAC SHA256 signature sent by GitHub App webhooks."""
+    """Verifies HMAC SHA256 signature sent by GitHub App webhooks.
+
+    Fails closed: if GITHUB_WEBHOOK_SECRET is not configured or signature header
+    is absent/malformed, the webhook is strictly rejected.
+    """
     if not settings.GITHUB_WEBHOOK_SECRET:
-        # If no secret configured in dev mode, accept payload
-        return True
+        # Strictly reject incoming webhooks when webhook secret is unconfigured
+        return False
     if not signature_header or not signature_header.startswith("sha256="):
         return False
 

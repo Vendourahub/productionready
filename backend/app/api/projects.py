@@ -4,10 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..auth import verify_api_key
 from ..models import Project, Assessment
 from ..schemas.project import ProjectCreate, ProjectResponse
 
-router = APIRouter(prefix="/api/projects", tags=["Projects"])
+router = APIRouter(prefix="/api/projects", tags=["Projects"], dependencies=[Depends(verify_api_key)])
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
