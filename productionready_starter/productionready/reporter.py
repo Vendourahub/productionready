@@ -1,6 +1,7 @@
 """High-polish HTML and JSON report generator for ProductionReady assessments."""
 from __future__ import annotations
 import json
+import os
 from html import escape
 from typing import Dict, Any
 from .models import AssessmentReport
@@ -113,13 +114,17 @@ def render_html(report_data: Dict[str, Any]) -> str:
         ledger_rows.append(row)
     ledger_html = "\n".join(ledger_rows)
 
+    agency_name = report_data.get("agency_name") or os.environ.get("AGENCY_NAME")
+    agency_email = report_data.get("agency_email") or os.environ.get("AGENCY_EMAIL") or "audits@productionready.dev"
+    branding_title = f"{e(agency_name)} &middot; ProductionReady" if agency_name else "ProductionReady"
+
     reviewer = report_data.get("reviewer_sign_off", {})
     reviewer_section = f"""
     <section class="reviewer-card">
         <h2>Human Auditor Review & Verification Stamp</h2>
         <div class="reviewer-grid">
             <div><strong>Reviewer:</strong> {e(reviewer.get("reviewer_name") or "Unassigned / Automated Baseline")}</div>
-            <div><strong>Auditor Email:</strong> {e(reviewer.get("reviewer_email") or "audits@productionready.dev")}</div>
+            <div><strong>Auditor Email:</strong> {e(reviewer.get("reviewer_email") or agency_email)}</div>
             <div><strong>Date:</strong> {e(reviewer.get("review_date_utc") or report_data.get("scan_time_utc"))}</div>
             <div><strong>Status:</strong> <span class="badge-neutral">{e(reviewer.get("status", "pending").upper())}</span></div>
         </div>
@@ -419,7 +424,7 @@ def render_html(report_data: Dict[str, Any]) -> str:
         <header>
             <div class="header-top">
                 <div class="brand-title">
-                    ProductionReady
+                    {branding_title}
                     <span class="brand-tag">v{e(report_data.get("version", "0.2.0"))}</span>
                 </div>
                 <div class="readiness-banner">{e(readiness)}</div>

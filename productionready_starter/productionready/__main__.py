@@ -42,6 +42,16 @@ def main():
         default=None,
         help="Auditor evaluation notes to include in the client report",
     )
+    parser.add_argument(
+        "--agency-name",
+        default=None,
+        help="Agency name for white-label client reports ($299 Agency License)",
+    )
+    parser.add_argument(
+        "--agency-email",
+        default=None,
+        help="Agency support email for white-label client reports",
+    )
 
     args = parser.parse_args()
 
@@ -56,6 +66,10 @@ def main():
             )
             # Retain original target name in report for clarity
             report["target"] = args.target
+            if args.agency_name:
+                report["agency_name"] = args.agency_name
+            if args.agency_email:
+                report["agency_email"] = args.agency_email
 
             out = Path(args.output)
             json_file = out.with_suffix(".json")
