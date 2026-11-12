@@ -115,7 +115,7 @@ def render_html(report_data: Dict[str, Any]) -> str:
     ledger_html = "\n".join(ledger_rows)
 
     agency_name = report_data.get("agency_name") or os.environ.get("AGENCY_NAME")
-    agency_email = report_data.get("agency_email") or os.environ.get("AGENCY_EMAIL") or "audits@productionready.dev"
+    agency_email = report_data.get("agency_email") or os.environ.get("AGENCY_EMAIL") or "audits@example.com"
     branding_title = f"{e(agency_name)} &middot; ProductionReady" if agency_name else "ProductionReady"
 
     reviewer = report_data.get("reviewer_sign_off", {})

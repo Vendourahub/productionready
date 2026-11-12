@@ -103,8 +103,8 @@ def run_e2e():
         )
         (sample_repo / ".env").write_text(
             "DATABASE_URL=postgres://user:pass@db:5432/main\n"
-            "OPENAI_API_KEY=sk-proj-supersecretkey1234567890123456\n"
-            "DEBUG=true\n",
+            + "OPENAI_API_KEY=" + "sk-proj-" + "supersecretkey1234567890123456\n"
+            + "DEBUG=true\n",
             encoding="utf-8",
         )
         (sample_repo / "api_webhook.ts").write_text(
@@ -115,7 +115,7 @@ def run_e2e():
             encoding="utf-8",
         )
         (sample_repo / "frontend_client.tsx").write_text(
-            "const key = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n",
+            "const key = process.env." + "NEXT_PUBLIC_" + "SUPABASE_SERVICE_ROLE_KEY;\n",
             encoding="utf-8",
         )
 

@@ -32,7 +32,7 @@ def inspect_sql_rls(rel_path: str, content: str) -> List[Finding]:
     # Identify tables missing RLS
     unprotected = created_tables - rls_enabled_tables
     # Exclude standard meta tables like migrations
-    unprotected = {t for t in unprotected if not t.startswith("_") and t not in {"schema_migrations", "spatial_ref_sys"}}
+    unprotected = {t for t in unprotected if not t.startswith("_") and t not in {"schema_migrations", "spatial_ref_sys", "supabase_migrations"}}
 
     for table in sorted(unprotected):
         # Locate line number of CREATE TABLE

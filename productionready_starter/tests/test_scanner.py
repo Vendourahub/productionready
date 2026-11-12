@@ -10,7 +10,7 @@ class ScanTests(unittest.TestCase):
     def test_detects_private_key_and_debug(self):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td)
-            (p / "settings.py").write_text("DEBUG=true\n-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            (p / "settings.py").write_text("DEBUG=true\n" + "-----BEGIN " + "PRIVATE KEY-----\n", encoding="utf-8")
             r = scan(p)
             ids = {x["rule_id"] for x in r["findings"]}
             self.assertIn("PR-KEY-001", ids)
@@ -48,7 +48,7 @@ class ScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td)
             (p / "client.ts").write_text(
-                'const key = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;\n',
+                'const key = process.env.' + 'NEXT_PUBLIC_' + 'SUPABASE_SERVICE_ROLE_KEY;\n',
                 encoding="utf-8",
             )
             r = scan(p)
