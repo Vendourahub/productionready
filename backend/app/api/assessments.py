@@ -1,22 +1,37 @@
 """Assessments and reports API endpoints."""
-from typing import List
+from typing import List, Optional
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..auth import verify_api_key
 from ..models import Assessment, Project, Finding, VerificationItem
 from ..schemas.assessment import AssessmentCreate, AssessmentResponse, AssessmentDetailResponse
 from ..schemas.review import ReviewerSignoffRequest
-from ..services.runner import execute_assessment
+from ..services.runner import execute_assessment, run_assessment_background
 
-router = APIRouter(tags=["Assessments"])
+router = APIRouter(tags=["Assessments"], dependencies=[Depends(verify_api_key)])
 
 
-@router.post("/api/projects/{project_id}/assessments", response_model=AssessmentResponse, status_code=status.HTTP_201_CREATED)
-def trigger_assessment(project_id: str, data: AssessmentCreate, db: Session = Depends(get_db)):
-    """Triggers an ephemeral assessment against the project repository."""
+@router.post(
+    "/api/projects/{project_id}/assessments",
+    response_model=AssessmentResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def trigger_assessment(
+    project_id: str,
+    data: AssessmentCreate,
+    background_tasks: BackgroundTasks,
+    sync: bool = Query(False, description="Whether to execute synchronously instead of queuing in background"),
+    db: Session = Depends(get_db),
+):
+    """Triggers an ephemeral assessment against the project repository.
+
+    By default runs asynchronously in background queue returning HTTP 202 immediately.
+    Set sync=true for synchronous completion.
+    """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found.")
@@ -32,19 +47,32 @@ def trigger_assessment(project_id: str, data: AssessmentCreate, db: Session = De
     db.commit()
     db.refresh(assessment)
 
-    # Execute inspection engine
-    try:
-        completed = execute_assessment(
-            db=db,
-            assessment_id=assessment.id,
-            github_token=data.github_token,
-            ref=data.ref or project.default_branch,
-            reviewer_name=data.reviewer_name,
-            reviewer_notes=data.reviewer_notes,
-        )
-        return completed
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Assessment failed: {str(e)}")
+    target_ref = data.ref or project.default_branch or "main"
+
+    if sync:
+        try:
+            completed = execute_assessment(
+                db=db,
+                assessment_id=assessment.id,
+                github_token=data.github_token,
+                ref=target_ref,
+                reviewer_name=data.reviewer_name,
+                reviewer_notes=data.reviewer_notes,
+            )
+            return completed
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Assessment failed: {str(e)}")
+
+    # Non-blocking async queue
+    background_tasks.add_task(
+        run_assessment_background,
+        assessment_id=assessment.id,
+        github_token=data.github_token,
+        ref=target_ref,
+        reviewer_name=data.reviewer_name,
+        reviewer_notes=data.reviewer_notes,
+    )
+    return assessment
 
 
 @router.get("/api/projects/{project_id}/assessments", response_model=List[AssessmentResponse])

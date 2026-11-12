@@ -146,3 +146,29 @@ def execute_assessment(
 
     db.refresh(assessment)
     return assessment
+
+
+def run_assessment_background(
+    assessment_id: str,
+    github_token: Optional[str] = None,
+    ref: Optional[str] = None,
+    reviewer_name: Optional[str] = None,
+    reviewer_notes: Optional[str] = None,
+) -> None:
+    """Background worker task executed by FastAPI BackgroundTasks worker pool."""
+    from ..database import SessionLocal
+    db = SessionLocal()
+    try:
+        execute_assessment(
+            db=db,
+            assessment_id=assessment_id,
+            github_token=github_token,
+            ref=ref,
+            reviewer_name=reviewer_name,
+            reviewer_notes=reviewer_notes,
+        )
+    except Exception as exc:
+        # Error is logged and persisted into AuditEvent by execute_assessment
+        pass
+    finally:
+        db.close()

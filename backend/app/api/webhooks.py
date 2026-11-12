@@ -1,12 +1,12 @@
 """GitHub Webhook integration router."""
 import json
-from fastapi import APIRouter, Header, Request, HTTPException, status, Depends
+from fastapi import APIRouter, Header, Request, HTTPException, status, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Project, Assessment
 from ..services.github import verify_github_signature
-from ..services.runner import execute_assessment
+from ..services.runner import run_assessment_background
 
 router = APIRouter(prefix="/api/webhooks", tags=["Webhooks"])
 
@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/webhooks", tags=["Webhooks"])
 @router.post("/github", status_code=status.HTTP_200_OK)
 async def github_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_github_event: str = Header(None),
     x_hub_signature_256: str = Header(None),
     db: Session = Depends(get_db),
@@ -52,12 +53,12 @@ async def github_webhook(
                 db.commit()
                 db.refresh(assessment)
 
-                # Trigger scan execution
-                execute_assessment(
-                    db=db,
+                # Queue background task execution
+                background_tasks.add_task(
+                    run_assessment_background,
                     assessment_id=assessment.id,
                     ref=ref,
                 )
-                return {"status": "assessment_triggered", "assessment_id": assessment.id}
+                return {"status": "assessment_queued", "assessment_id": assessment.id}
 
     return {"status": "ignored", "event": x_github_event}
