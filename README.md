@@ -2,6 +2,8 @@
 
 Evidence-backed deployment readiness verification and remediation platform for AI-built web applications (Cursor, Claude Code, Lovable, Bolt, Replit).
 
+> **Full Documentation:** See **[SETUP.md](./SETUP.md)** for complete database schema tables, environment configuration, verified API endpoints, and end-to-end instructions.
+
 ---
 
 ## Architecture Overview
