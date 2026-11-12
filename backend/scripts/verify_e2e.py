@@ -37,6 +37,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.database import Base, get_db
+from app.config import settings
 
 # Configure in-memory DB with StaticPool so all calls share state
 test_engine = create_engine(
@@ -58,6 +59,7 @@ def override_get_db():
 
 app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
+AUTH_HEADERS = {"X-API-Key": settings.effective_api_key}
 
 
 def log_step(name: str, passed: bool, details: str = ""):
@@ -119,9 +121,13 @@ def run_e2e():
             encoding="utf-8",
         )
 
-        # POST /api/projects
+        # POST /api/projects (verify 401 without auth, then 201 with auth)
+        unauth_res = client.post("/api/projects", json={"name": "test", "repository_url": "test"})
+        log_step("POST /api/projects (reject unauthenticated)", unauth_res.status_code == 401, f"HTTP {unauth_res.status_code}")
+
         res = client.post(
             "/api/projects",
+            headers=AUTH_HEADERS,
             json={
                 "name": "E2E Test SaaS Deliverable",
                 "repository_url": str(sample_repo),
@@ -134,26 +140,27 @@ def run_e2e():
         assert project["name"] == "E2E Test SaaS Deliverable"
 
         # GET /api/projects
-        res = client.get("/api/projects")
+        res = client.get("/api/projects", headers=AUTH_HEADERS)
         log_step("GET /api/projects", res.status_code == 200, f"Found {len(res.json())} project(s)")
         assert any(p["id"] == project_id for p in res.json())
 
         # GET /api/projects/{id}
-        res = client.get(f"/api/projects/{project_id}")
+        res = client.get(f"/api/projects/{project_id}", headers=AUTH_HEADERS)
         log_step(f"GET /api/projects/{project_id}", res.status_code == 200, f"Project: {res.json()['name']}")
 
         # 4. RUN EPHEMERAL ASSESSMENT
         print("\n--- 4. ASSESSMENT ORCHESTRATION & LEDGER ENGINE ---")
         t0 = time.time()
         res = client.post(
-            f"/api/projects/{project_id}/assessments",
+            f"/api/projects/{project_id}/assessments?sync=true",
+            headers=AUTH_HEADERS,
             json={
                 "ref": "main",
                 "reviewer_name": "Senior Security Auditor",
                 "reviewer_notes": "Automated baseline scan for pre-launch verification.",
             },
         )
-        log_step("POST /api/projects/{id}/assessments", res.status_code == 201, f"HTTP {res.status_code} in {round((time.time() - t0)*1000, 1)}ms")
+        log_step("POST /api/projects/{id}/assessments?sync=true", res.status_code == 202, f"HTTP {res.status_code} in {round((time.time() - t0)*1000, 1)}ms")
         assessment = res.json()
         assessment_id = assessment["id"]
 
@@ -167,11 +174,11 @@ def run_e2e():
         )
 
         # GET /api/projects/{id}/assessments
-        res = client.get(f"/api/projects/{project_id}/assessments")
+        res = client.get(f"/api/projects/{project_id}/assessments", headers=AUTH_HEADERS)
         log_step("GET /api/projects/{id}/assessments", res.status_code == 200, f"History count: {len(res.json())}")
 
         # GET /api/assessments/{id}
-        res = client.get(f"/api/assessments/{assessment_id}")
+        res = client.get(f"/api/assessments/{assessment_id}", headers=AUTH_HEADERS)
         log_step(f"GET /api/assessments/{assessment_id}", res.status_code == 200)
         detail = res.json()
         findings = detail["findings"]
@@ -192,12 +199,12 @@ def run_e2e():
 
         # 5. REPORT EXPORTS (HTML & JSON)
         print("\n--- 5. EXECUTIVE REPORT GENERATION ---")
-        res_html = client.get(f"/api/assessments/{assessment_id}/report.html")
+        res_html = client.get(f"/api/assessments/{assessment_id}/report.html", headers=AUTH_HEADERS)
         log_step("GET /api/assessments/{id}/report.html", res_html.status_code == 200, f"HTML size: {len(res_html.text)} bytes")
         assert "ProductionReady" in res_html.text
         assert "OWASP ASVS 5.0 Verification & Gap Ledger" in res_html.text
 
-        res_json = client.get(f"/api/assessments/{assessment_id}/report.json")
+        res_json = client.get(f"/api/assessments/{assessment_id}/report.json", headers=AUTH_HEADERS)
         log_step("GET /api/assessments/{id}/report.json", res_json.status_code == 200, f"JSON export content-type: {res_json.headers.get('content-type')}")
 
         # 6. REMEDIATION WORKFLOW
@@ -208,6 +215,7 @@ def run_e2e():
         # Mark as RESOLVED
         res = client.patch(
             f"/api/findings/{finding_id}/status",
+            headers=AUTH_HEADERS,
             json={
                 "status": "RESOLVED",
                 "resolution_notes": "Implemented Row Level Security policy with tenant isolation.",
@@ -220,6 +228,7 @@ def run_e2e():
         if len(findings) > 1:
             res2 = client.patch(
                 f"/api/findings/{findings[1]['id']}/status",
+                headers=AUTH_HEADERS,
                 json={
                     "status": "ACCEPTED_RISK",
                     "resolution_notes": "Acknowledged internal service role access; VPC restricted.",
@@ -231,6 +240,7 @@ def run_e2e():
         print("\n--- 7. HUMAN AUDITOR SIGN-OFF STAMP ---")
         res = client.post(
             f"/api/assessments/{assessment_id}/review",
+            headers=AUTH_HEADERS,
             json={
                 "reviewer_name": "Jane Doe, Lead AppSec Auditor",
                 "reviewer_status": "approved",
@@ -242,14 +252,16 @@ def run_e2e():
 
         # 8. ONE-CLICK REASSESSMENT CYCLE
         print("\n--- 8. ONE-CLICK REASSESSMENT CYCLE ---")
-        res = client.post(f"/api/assessments/{assessment_id}/reassessment")
+        res = client.post(f"/api/assessments/{assessment_id}/reassessment", headers=AUTH_HEADERS)
         log_step("POST /api/assessments/{id}/reassessment", res.status_code == 200, f"New Assessment ID: {res.json()['id']}")
         new_assessment_id = res.json()["id"]
         assert new_assessment_id != assessment_id
 
         # 9. GITHUB WEBHOOKS INTAKE WITH HMAC SIGNATURE
         print("\n--- 9. GITHUB APP WEBHOOK INTAKE ---")
-        # Test valid push event payload
+        webhook_secret = "test_webhook_hmac_secret_123"
+        settings.GITHUB_WEBHOOK_SECRET = webhook_secret
+
         webhook_payload = json.dumps({
             "ref": "refs/heads/main",
             "after": "fedcba9876543210",
@@ -259,23 +271,34 @@ def run_e2e():
             },
         }).encode("utf-8")
 
+        # Test rejected without signature
+        unauth_webhook = client.post(
+            "/api/webhooks/github",
+            content=webhook_payload,
+            headers={"X-GitHub-Event": "push"},
+        )
+        log_step("POST /api/webhooks/github (reject unsigned)", unauth_webhook.status_code == 401, f"HTTP {unauth_webhook.status_code}")
+
+        # Test accepted with valid HMAC signature
+        valid_hmac = hmac.new(webhook_secret.encode("utf-8"), webhook_payload, hashlib.sha256).hexdigest()
         res = client.post(
             "/api/webhooks/github",
             content=webhook_payload,
             headers={
                 "X-GitHub-Event": "push",
+                "X-Hub-Signature-256": f"sha256={valid_hmac}",
                 "Content-Type": "application/json",
             },
         )
-        log_step("POST /api/webhooks/github (push event)", res.status_code == 200, f"Response: {res.json()}")
+        log_step("POST /api/webhooks/github (push event with HMAC)", res.status_code == 200, f"Response: {res.json()}")
 
         # 10. PROJECT DELETION & CASCADE
         print("\n--- 10. CLEANUP & CASCADE DELETION ---")
-        res = client.delete(f"/api/projects/{project_id}")
+        res = client.delete(f"/api/projects/{project_id}", headers=AUTH_HEADERS)
         log_step(f"DELETE /api/projects/{project_id}", res.status_code == 204)
 
         # Confirm 404 after deletion
-        res = client.get(f"/api/projects/{project_id}")
+        res = client.get(f"/api/projects/{project_id}", headers=AUTH_HEADERS)
         log_step("Confirm Project Deleted", res.status_code == 404)
 
     print("\n" + "=" * 70)

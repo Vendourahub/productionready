@@ -46,14 +46,15 @@ npm -v
 
 ---
 
-## 3. Dependency Installation
+## 3. Dependency Installation & Database Setup
 
-### Backend Dependencies:
+### Backend Dependencies & Migrations:
 ```bash
 cd backend
 pip install -r requirements.txt
+alembic upgrade head
 ```
-*(Dependencies: `fastapi`, `uvicorn`, `sqlalchemy`, `pydantic`, `httpx`).*
+*(Dependencies: `fastapi`, `uvicorn`, `sqlalchemy`, `alembic`, `pydantic`, `httpx`).*
 
 ### Frontend Dependencies:
 ```bash
@@ -101,20 +102,26 @@ Open your browser at [http://localhost:3000](http://localhost:3000).
 
 Execute the complete multi-tier test suites:
 
-### 1. Standalone Core Inspection Engine Tests:
+### 1. Standalone Core Inspection Engine & Security Intake Tests:
 ```bash
-cd productionready_starter
-python -m unittest discover -s tests -v
+python -m unittest discover -s productionready_starter/tests -v
 ```
+*(Tests Supabase RLS detection, client leak detection, Stripe webhook validation, and tarball symlink/path traversal defenses).*
 
-### 2. Backend API & Schema Integration Tests:
+### 2. Backend API Security & Integration Tests:
 ```bash
-cd ../backend
-python -m unittest discover -s tests -v
+python -m unittest discover -s backend/tests -v
 ```
+*(Tests API Key authentication, webhook HMAC enforcement, background task queueing, and reviewer sign-off).*
 
-### 3. Full Live 13-Endpoint End-to-End Verification:
+### 3. Frontend Contract Tests:
 ```bash
-python scripts/verify_e2e.py
+python frontend/tests/test_frontend_contracts.py
+```
+*(Validates frontend TypeScript API contracts and payload interfaces).*
+
+### 4. Full Live 13-Endpoint End-to-End Verification:
+```bash
+python backend/scripts/verify_e2e.py
 ```
 *Executes all 13 REST API endpoints, verifies database tables, tests finding lifecycle, and generates audit reports.*
